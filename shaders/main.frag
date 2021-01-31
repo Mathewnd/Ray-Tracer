@@ -10,20 +10,24 @@
 // variables
 
 #define NUM_REFLECTANCES 1 // the maximum amount of reflectance
-#define RAY_MAX_STEPS 250 // how many steps per loop
+#define REFLECTION_MAX_STEPS 400 // how many steps per reflection loop
+#define RAY_MAX_STEPS 400 // how many steps per loop
 #define STEP_SIZE 0.1 // the size of each step
-#define SKY_COLOUR vec3(0.5,0.5,0.8) //the colour of the sky
+#define SKY_COLOUR vec3(0.5,0,0) //the colour of the sky
 #define FOG_INCREASE 0.00375 // fog density
 #define BRIGHTNESS_DECREASE 0.03 // how much each step inside an object reduces the brightness
-#define MAX_FOG 1 // maximum distortion by fog
+#define MAX_FOG 0 // maximum distortion by fog
 #define MIN_FOG 0 // minimum distortion by fog
-#define LIGHT_POS vec3(0, 50, 50) // it will be normalized later, so use this as an overall direction.
+#define LIGHT_POS vec3(0, 0, -500) // it will be normalized later, so use this as an overall direction.
 #define NUMBER_SPHERES 2 //number of spheres   ( REMEMBER TO ALWAYS PROPERLY SET THE SHAPES, OTHERWISE IT WILL LIKELY CRASH THE APPLICATION.)
 #define NUMBER_CUBES   0 //number of cubes     ( REMEMBER TO ALWAYS PROPERLY SET THE SHAPES, OTHERWISE IT WILL LIKELY CRASH THE APPLICATION.)
-#define NUMBER_CYLIN   1 //number of cylinders ( REMEMBER TO ALWAYS PROPERLY SET THE SHAPES, OTHERWISE IT WILL LIKELY CRASH THE APPLICATION.)
+#define NUMBER_CYLIN   0 //number of cylinders ( REMEMBER TO ALWAYS PROPERLY SET THE SHAPES, OTHERWISE IT WILL LIKELY CRASH THE APPLICATION.)
 #define MIN_REFLECTANCE 0.1 // minimum reflectance needed for something to reflect.
 #define MIN_BRIGHTNESS 0.2 // minimum amount of brightness a ray can have
 #define STARTING_BRIGHTNESS 0.9 // the initial amount of brightness in a ray
+#define FLOOR_HEIGHT 0 //the Y coordinate where the floor is
+#define FLOOR_COLOUR vec3(0, 0, 0.4) // the colour of the floor
+#define FLOOR_ACTIVE 0
 
 uniform vec3 time;
 
@@ -83,8 +87,8 @@ bool insideCylinder(vec3 p, Cylinder c){
 
 #if NUMBER_SPHERES > 0
     Sphere sphere[] = Sphere[NUMBER_SPHERES](
-        Sphere(vec3(0,10,-2.5), 4.f, vec3(0,1,0), 0.6),
-        Sphere(vec3(0,4, 11), 4.f, vec3(0,1,0), 0.6)
+        Sphere(vec3(0,0, -30), 5.f, vec3(0.7,0.7,0.7), 0.5),
+        Sphere(vec3(0,0, 0), 10.f, vec3(0.5,0.5,0.9), 0.f)
     );
 #endif // NUMBER_SPHERES
 
@@ -93,12 +97,6 @@ bool insideCylinder(vec3 p, Cylinder c){
         Cylinder(vec3(0, 6, 0), vec2(3, 4), vec3(0.3, 0.7, 0.7), 0.f)
     );
 #endif // NUMBER_CYLIN
-
-void collisions(in vec3 p, out float refl, out vec3 rdir, out vec3 c, out vec3 fhit, out bool hit){
-
-
-
-}
 
 void main(){
 
@@ -124,7 +122,8 @@ void main(){
     bool shouldReflect = false;
     bool hit = false;
     float fog = 0;
-
+    vec3 refdir = vec3(0,0,0);
+    float reflec = 0;
     vec3 p;
 
     for(int i = 0; (!hit) && i < RAY_MAX_STEPS; ++i){
@@ -142,6 +141,8 @@ void main(){
         for(int j = 0; j < NUMBER_SPHERES; ++j){
             if(insideSphere(p, sphere[j])){
                 finalColour = sphere[j].colour;
+                reflec = sphere[j].reflectance;
+                refdir = reflect(r.direction, normalize(-(sphere[j].position - p)));
                 if(sphere[j].reflectance >= MIN_REFLECTANCE) shouldReflect = true;
                 hit = true;
             }
@@ -169,6 +170,12 @@ void main(){
         }
         if(hit) break;
         #endif // NUMBER_CUBES
+        #if FLOOR_ACTIVE > 0
+        if(p.y <= FLOOR_HEIGHT){
+            hit = true;
+            finalColour = FLOOR_COLOUR;
+        }
+        #endif //FLOOR_ACTIVE
 
     }
 
@@ -186,7 +193,7 @@ void main(){
 
             //get the current ray position
 
-            vec3 p = (i+10) * r.direction * STEP_SIZE + r.origin;
+            vec3 p = (i) * r.direction * STEP_SIZE + r.origin;
 
             //loop through every shape and check if inside it
 
@@ -225,10 +232,44 @@ void main(){
     else
         finalColour = SKY_COLOUR;
 
+    //reflection
 
+
+    #if NUM_REFLECTANCES > 0
+
+        if(shouldReflect){
+            for(int ref = 0; ref < NUM_REFLECTANCES; ++ref){
+
+                r.direction = refdir;
+
+                hit = false;
+
+                for(int i = 3; (!hit) && i < REFLECTION_MAX_STEPS; ++i){
+
+
+
+                    vec3 p = i * r.direction * STEP_SIZE + r.origin;
+
+                    for(int j = 0; j < NUMBER_SPHERES; ++j){
+                        if(insideSphere(p, sphere[j])){
+                            finalColour = mix(finalColour, sphere[j].colour, reflec);
+                            hit = true;
+                        }
+
+                    }
+                }
+
+                if(!hit)
+                    finalColour = mix(finalColour, SKY_COLOUR, reflec);
+
+
+            }
+        }
+
+    #endif // NUM_REFLECTANCES
 
     //set the output colour
 
-    color = vec4(mix(finalColour * brightness, SKY_COLOUR, fog), 1);
+    color = vec4(mix(finalColour * brightness, SKY_COLOUR, clamp(fog, MAX_FOG, MIN_FOG)), 1);
 
 }
